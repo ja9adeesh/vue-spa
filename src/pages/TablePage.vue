@@ -6,15 +6,16 @@
     <button @click="getData">Refresh</button>
     <button @click="getPrev">prev</button>
     <button @click="getNext">next</button>
+    <div>{{dtColumns[2].filterValue + ' -- ' + columns[2].filterValue}}</div>
     <table class="checkout-table">
       <thead>
         <tr>
-          <dt-th v-for="(col, index) in dtColumns" :key="index" :col="col" :rows="dtRows"></dt-th>
+          <dt-th v-for="(col, index) in dtColumns" :key="index" :col="col" :rows="dtRows" @filterColumn="filterColumn"></dt-th>
         </tr>
       </thead>
       <tbody>
       <tr v-for="(row, index) in dtRows" :key="index">
-        <dt-td v-for="(col, index) in columns" :key="index" :col="col" :row="row"></dt-td>
+        <dt-td v-for="(col, index) in columns" :key="index" :col="col" :row="row" :selectedIds="selectedIds"></dt-td>
       </tr>
       <tr class='total'>
         <td v-for="(col, index) in dtColumns" :key="index" v-if="col.total"></td>
@@ -36,9 +37,9 @@ export default {
       columns: [
         { name: "id", text: "ID", type: 'checkbox' },
         { name: "id", text: "ID", total: true },
-        { name: "name", text: "Name", filter: "input", rowRender(h,val, row) { return <router-link to={{ name: 'product', params: {id: row.id}} }>{val}</router-link> } },
-        { name: "username", text: "Username" },
-        { name: "email", text: "Email" },
+        { name: "name", text: "Name", filter: "input", filterValue: 'user', rowRender(h,val, row) { return <router-link to={{ name: 'product', params: {id: row.id}} }>{val}</router-link> } },
+        { name: "username", text: "Username", filter: "input" },
+        { name: "email", text: "Email", filter: "input" },
         { name: "website", text: "URL", rowRender(h,val, row) { return <a target="_blank" href={ `http://${val}` }>{row.website}</a> } }
       ],
       rows: [],
@@ -61,14 +62,15 @@ export default {
         type: 'string',
         sort: true,
         filter: false,
-        filterValue: null,
+        filterValue: '',
         total: false,
         colRender: null,
         rowRender: null,
         colRendered: null,
         rowRendered: null
       }
-    }
+    };
+    this._rows = [];
     this.parseColumns();
     this.getData();
   },
@@ -77,7 +79,13 @@ export default {
       return this.columns;
     },
     dtRows() {
-      return this.rows.slice((this.startPage - 1) * this.perPage, this.perPage*this.startPage);
+      let rows = this.rows;
+      this.columns.forEach(col => {
+        if (col.filterValue)
+        rows = rows.filter(r => (r[col.name] == null ? '' : (r[col.name] + '')).search(new RegExp(col.filterValue, 'ig')) > -1);
+      })
+
+      return rows.slice((this.startPage - 1) * this.perPage, this.perPage*this.startPage);
     },
     checkoutStatus() {
       return this.$store.state.cart.lastCheckout
@@ -96,6 +104,15 @@ export default {
   components: {
     'dt-th': {
       props: ['col', 'rows'],
+      watch: {
+        col: {
+          handler(_col) {
+            console.log(_col);
+            this.$emit('filter-column', _col);
+          },
+          depp: true
+        }
+      },
       render: function (h) {
         const { col, rows } = this;
         let child = col.text;
@@ -107,7 +124,7 @@ export default {
 
           if (typeof col.colRender === 'function') child = col.colRender.call(this, h, col, rows)
           if (col.filter === 'input') {
-            child = (<div><div>{child}</div><input type="text" v-model={col.filterValue} /></div>);
+            child = (<div><div>{child}</div><input type="text" value={col.filterValue} onInput={(e) => { console.log(this.col); this.col.filterValue = e.target.value; console.log(this.col); } } /></div>);
           }
         }
 
@@ -120,13 +137,13 @@ export default {
       }
     },
     'dt-td': {
-      props: ['col', 'row'],
+      props: ['col', 'row', 'selectedIds'],
       render: function (h) {
         const { col, row } = this;
 
         let child = row[col.name];
         if (col.type === 'checkbox') {
-          child = <input type="checkbox" id={row.id} value={row.id} v-model={this.selectedIds}/>
+          child = <input type="checkbox" id={row.id} value={row.id} checked={this.selectedIds.includes(row.id)} onChange={e => e.target.checked ? this.selectedIds.push(row.id) : this.selectedIds.splice(this.selectedIds.indexOf(row.id), 1) } />
 
         } else {
           if (typeof col.rowRender === 'function') child = col.rowRender.call(this, h, row[col.name], row)
@@ -147,7 +164,7 @@ export default {
       this.columns = this.columns.map(col => Object.assign({}, this.defaults.column, col));
     },
     getData() {
-      fetch(this.url).then((resp) => resp.json()).then(data => typeof this.afterFetch === 'function' ? this.afterFetch(data) : data).then(data => { this.rows = data; console.log(this.rows) });
+      fetch(this.url).then((resp) => resp.json()).then(data => typeof this.afterFetch === 'function' ? this.afterFetch(data) : data).then(data => this.rows = data);
     },
     getNext() {
       if(this.startPage * this.perPage < this.rows.length)
@@ -157,6 +174,11 @@ export default {
     getPrev() {
       if (this.startPage > 1)
       this.startPage -= 1;
+    },
+    filterColumn(col) {
+            console.log(col);
+      if (col.filterValue)
+        this.rows = this.rows.filter(r => (r[col.name] == null ? '' : (r[col.name] + '')).search(new RegExp(col.filterValue, 'ig')) > -1);
     },
     sort(name) {
       if(name) {
