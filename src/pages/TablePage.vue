@@ -10,11 +10,11 @@
     <table class="checkout-table">
       <thead>
         <tr>
-          <dt-th v-for="(col, index) in dtColumns" :key="index" :col="col" :rows="dtRows" @filterColumn="filterColumn"></dt-th>
+          <dt-th v-for="(col, index) in dtColumns" :key="index" :col="col" :rows="dtRows" @click="sort(col)" ></dt-th>
         </tr>
       </thead>
       <tbody>
-      <tr v-for="(row, index) in dtRows" :key="index">
+      <tr v-for="(row, index) in pageRows" :key="index">
         <dt-td v-for="(col, index) in columns" :key="index" :col="col" :row="row" :selectedIds="selectedIds"></dt-td>
       </tr>
       <tr class='total'>
@@ -37,8 +37,8 @@ export default {
       columns: [
         { name: "id", text: "ID", type: 'checkbox' },
         { name: "id", text: "ID", total: true },
-        { name: "name", text: "Name", filter: "input", filterValue: 'user', rowRender(h,val, row) { return <router-link to={{ name: 'product', params: {id: row.id}} }>{val}</router-link> } },
-        { name: "username", text: "Username", filter: "input" },
+        { name: "name", text: "Name", filter: "input", filterValue: '', rowRender(h,val, row) { return <router-link to={{ name: 'product', params: {id: row.id}} }>{val}</router-link> } },
+        { name: "username", text: "Username", filter: "select" },
         { name: "email", text: "Email", filter: "input" },
         { name: "website", text: "URL", rowRender(h,val, row) { return <a target="_blank" href={ `http://${val}` }>{row.website}</a> } }
       ],
@@ -79,13 +79,35 @@ export default {
       return this.columns;
     },
     dtRows() {
+      return this.rows;
+    },
+    filteredRows() {
       let rows = this.rows;
+
+      // filter by column
       this.columns.forEach(col => {
         if (col.filterValue)
         rows = rows.filter(r => (r[col.name] == null ? '' : (r[col.name] + '')).search(new RegExp(col.filterValue, 'ig')) > -1);
-      })
+      });
 
-      return rows.slice((this.startPage - 1) * this.perPage, this.perPage*this.startPage);
+      // filter globally
+
+
+      // sort by column
+      // if(col.sort === 'asc') {
+      //   this.filteredRows.sort((a,b) => (a[name] > b[name]) ? 1 : ((b[name] > a[name]) ? -1 : 0));
+      //   col.sort = 'desc';
+      // } else if(col.sort === 'desc') {
+      //   this.filteredRows.sort((a,b) => (a[name] > b[name]) ? -1 : ((b[name] > a[name]) ? 1 : 0));
+      //   col.sort = 'asc';
+      // } 
+
+      // this.startPage = 1;
+
+      return rows;
+    },
+    pageRows() {
+      return this.filteredRows.slice((this.startPage - 1) * this.perPage, this.perPage*this.startPage);
     },
     checkoutStatus() {
       return this.$store.state.cart.lastCheckout
@@ -104,15 +126,15 @@ export default {
   components: {
     'dt-th': {
       props: ['col', 'rows'],
-      watch: {
-        col: {
-          handler(_col) {
-            console.log(_col);
-            this.$emit('filter-column', _col);
-          },
-          depp: true
-        }
-      },
+      // watch: {
+      //   col: {
+      //     handler(_col) {
+      //       console.log(_col);
+      //       this.$emit('filter-column', _col);
+      //     },
+      //     depp: true
+      //   }
+      // },
       render: function (h) {
         const { col, rows } = this;
         let child = col.text;
@@ -124,7 +146,19 @@ export default {
 
           if (typeof col.colRender === 'function') child = col.colRender.call(this, h, col, rows)
           if (col.filter === 'input') {
-            child = (<div><div>{child}</div><input type="text" value={col.filterValue} onInput={(e) => { console.log(this.col); this.col.filterValue = e.target.value; console.log(this.col); } } /></div>);
+            child = (<div><div>{child}</div><input type="text" value={col.filterValue} onInput={(e) => this.col.filterValue = e.target.value } /></div>);
+          } else if (col.filter === 'select') {
+            const options = [];
+            rows.map(r => r[col.name]).reduce((o, v) => { if(!o.includes(v)) o.push(v); return o; }, options);
+
+            child = (
+              <div>
+                <div>{child}</div>
+                <select value={col.filterValue} onChange={(e) => this.col.filterValue = e.target.value } >
+                  <option value="" selected>All</option>
+                  {options.map(o => <option value={o}>{o}</option>)}
+                </select>
+              </div>);
           }
         }
 
@@ -167,24 +201,22 @@ export default {
       fetch(this.url).then((resp) => resp.json()).then(data => typeof this.afterFetch === 'function' ? this.afterFetch(data) : data).then(data => this.rows = data);
     },
     getNext() {
-      if(this.startPage * this.perPage < this.rows.length)
+      if(this.startPage * this.perPage < this.filteredRows.length)
       this.startPage += 1;
-      debugger;
     },
     getPrev() {
       if (this.startPage > 1)
       this.startPage -= 1;
     },
-    filterColumn(col) {
-            console.log(col);
-      if (col.filterValue)
-        this.rows = this.rows.filter(r => (r[col.name] == null ? '' : (r[col.name] + '')).search(new RegExp(col.filterValue, 'ig')) > -1);
-    },
-    sort(name) {
-      if(name) {
-      this.rows.sort((a,b) => (a[name] > b[name]) ? 1 : ((b[name] > a[name]) ? -1 : 0));
-      this.sortBy = name;
-      }
+    sort(col) {
+      colsole.log(col);
+      if(col.sort === 'desc') {
+        this.filteredRows.sort((a,b) => (a[name] > b[name]) ? 1 : ((b[name] > a[name]) ? -1 : 0));
+        col.sort = 'asc';
+      } else {
+        this.filteredRows.sort((a,b) => (a[name] > b[name]) ? -1 : ((b[name] > a[name]) ? 1 : 0));
+        col.sort = 'desc';
+      } 
     },
     insertNew() {
       alert('adding new');
