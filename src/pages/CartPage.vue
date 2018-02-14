@@ -12,7 +12,7 @@
         </tr>
       </thead>
       <tbody>
-      <tr v-for="p in products">
+      <tr v-for="p in products" :key="p.id">
         <td><router-link :to="{name: 'product', params: {id: p.id}}">{{ p.title }}</router-link></td>
         <td>$ {{ p.price }}</td>
         <td>{{ p.quantity }}</td>
